@@ -60,7 +60,7 @@ For each category, create an array of items with:
 RSS CONTENT TO PROCESS:
 ${JSON.stringify(rssContent, null, 2)}
 
-Respond ONLY with valid JSON in this exact format:
+IMPORTANT: Respond ONLY with valid JSON. Do not wrap in code blocks or add any other text. Return ONLY the JSON object in this exact format:
 {
   "latestNews": [{"title": "...", "summary": "...", "link": "...", "source": "...", "priority": "..."}],
   "helpfulArticles": [{"title": "...", "summary": "...", "link": "...", "source": "...", "priority": "..."}],
@@ -77,16 +77,36 @@ Respond ONLY with valid JSON in this exact format:
       model: 'llama-3.3-70b-versatile',
       temperature: 0.3,
       max_tokens: 4000,
+      response_format: { type: "json_object" } // Force JSON response
     });
 
     const aiResponse = completion.choices[0]?.message?.content;
+    console.log('Raw AI Response:', aiResponse); // Debug log
+    
+    // Clean the response - remove markdown code blocks if present
+    let cleanedResponse = aiResponse.trim();
+    
+    // Remove ```json and ``` if present
+    cleanedResponse = cleanedResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    
+    // Remove any text before the first { or after the last }
+    const firstBrace = cleanedResponse.indexOf('{');
+    const lastBrace = cleanedResponse.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      cleanedResponse = cleanedResponse.substring(firstBrace, lastBrace + 1);
+    }
+    
+    console.log('Cleaned Response:', cleanedResponse); // Debug log
     
     // Try to parse the JSON response
     let parsedDigest;
     try {
-      parsedDigest = JSON.parse(aiResponse);
+      parsedDigest = JSON.parse(cleanedResponse);
     } catch (parseError) {
       console.error('JSON parsing error:', parseError);
+      console.error('Failed to parse:', cleanedResponse);
+      
       // Fallback response if JSON parsing fails
       parsedDigest = {
         latestNews: [{ title: "Processing Error", summary: "Unable to parse AI response", link: "#", source: "System", priority: "low" }],

@@ -100,20 +100,20 @@ function App() {
                 
                 return {
                     title: title.trim(),
-                    summary: summary.trim().substring(0, 200) + '...',
+                    summary: summary.trim().substring(0, 300) + '...',
                     link,
                     published: new Date(published)
                 };
             });
             
-            return items.slice(0, 5); // Get latest 5 items
+            return items.slice(0, 8); // Get latest 8 items per source
         } catch (error) {
             console.error('Error fetching RSS feed:', error);
             return [];
         }
     };
 
-    // Generate Digest with Real RSS Data
+    // Generate Digest with AI Processing
     const generateDigest = async () => {
         setIsLoading(true);
         
@@ -132,14 +132,13 @@ function App() {
             
             const allFeeds = await Promise.all(feedPromises);
             
-            // Combine and organize content
+            // Combine all RSS content
             let allItems = [];
             allFeeds.forEach(feed => {
                 feed.items.forEach(item => {
                     allItems.push({
                         ...item,
-                        source: feed.sourceName,
-                        priority: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
+                        source: feed.sourceName
                     });
                 });
             });
@@ -147,46 +146,86 @@ function App() {
             // Sort by publication date
             allItems.sort((a, b) => new Date(b.published) - new Date(a.published));
             
-            // Organize into sections
-            const sections = [
-                {
-                    title: "🔥 Latest AI News",
-                    items: allItems.slice(0, 6)
+            // Call Netlify function with Groq AI processing
+            const response = await fetch('/.netlify/functions/generateDigest', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
                 },
-                {
-                    title: "🛠️ New AI Tools & Products", 
-                    items: allItems.slice(6, 12)
-                },
-                {
-                    title: "💡 Industry Insights & Resources",
-                    items: allItems.slice(12, 18)
-                }
-            ];
-            
-            const processedDigest = {
-                title: `🤖 Manpreet's AI Digest - ${new Date().toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                })}`,
-                summary: "Your personalized AI news digest from real RSS feeds",
-                sections: sections.filter(section => section.items.length > 0),
-                metadata: {
-                    sources: activeSources.length,
-                    articlesProcessed: allItems.length,
-                    readingTime: Math.ceil(allItems.length * 0.5) + " min",
-                    generatedAt: new Date().toLocaleString(),
+                body: JSON.stringify({
+                    rssContent: allItems,
                     focusArea: promptTemplates[selectedPrompt].title
-                }
-            };
+                })
+            });
             
-            setDigest(processedDigest);
+            const result = await response.json();
+            
+            if (result.success) {
+                // Organize AI processed content into display format
+                const aiDigest = result.digest;
+                
+                // Map the 7 AI categories to display sections
+                const sections = [
+                    {
+                        title: "🔥 Latest AI News",
+                        items: aiDigest.latestNews || []
+                    },
+                    {
+                        title: "📚 Helpful Articles", 
+                        items: aiDigest.helpfulArticles || []
+                    },
+                    {
+                        title: "🔗 Full Article Links",
+                        items: aiDigest.fullArticleLinks || []
+                    },
+                    {
+                        title: "🎁 Free Resources",
+                        items: aiDigest.freeResources || []
+                    },
+                    {
+                        title: "🆓 Free Trials",
+                        items: aiDigest.freeTrials || []
+                    },
+                    {
+                        title: "🛠️ New AI Tools",
+                        items: aiDigest.newAITools || []
+                    },
+                    {
+                        title: "💡 Prompt Section",
+                        items: aiDigest.promptSection || []
+                    }
+                ];
+                
+                const processedDigest = {
+                    title: `🤖 Manpreet's AI Digest - ${new Date().toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    })}`,
+                    summary: "AI-powered digest from your RSS feeds, organized into 7 focused sections",
+                    sections: sections.filter(section => section.items.length > 0),
+                    metadata: {
+                        sources: activeSources.length,
+                        articlesProcessed: result.totalItems || allItems.length,
+                        readingTime: Math.ceil((result.totalItems || allItems.length) * 0.3) + " min",
+                        generatedAt: new Date().toLocaleString(),
+                        focusArea: promptTemplates[selectedPrompt].title,
+                        aiProcessed: true
+                    }
+                };
+                
+                setDigest(processedDigest);
+                
+            } else {
+                throw new Error(result.message || 'AI processing failed');
+            }
             
         } catch (error) {
             console.error('Error generating digest:', error);
             
-            // Fallback to mock data if RSS fails
+            // Fallback to basic processing if AI fails
+            const activeSources = sources.filter(s => s.status === 'active');
             const mockDigest = {
                 title: `🤖 Manpreet's AI Digest - ${new Date().toLocaleDateString('en-US', {
                     weekday: 'long',
@@ -194,15 +233,15 @@ function App() {
                     month: 'long',
                     day: 'numeric'
                 })}`,
-                summary: "RSS feeds are loading... Showing sample content",
+                summary: "AI processing temporarily unavailable - showing basic RSS content",
                 sections: [
                     {
-                        title: "🔥 Breaking AI News",
+                        title: "🔥 Latest Content from RSS Feeds",
                         items: [
                             {
-                                title: "RSS Integration Active - Real Content Loading",
+                                title: "AI Processing Error - RSS Feeds Loading",
                                 source: "System",
-                                summary: "Your RSS feeds are now connected and will provide real content from your 6 newsletter sources.",
+                                summary: "There was an issue with AI processing. Please try again. Your RSS feeds are connected and working.",
                                 link: "#",
                                 priority: "high"
                             }
@@ -210,11 +249,12 @@ function App() {
                     }
                 ],
                 metadata: {
-                    sources: sources.filter(s => s.status === 'active').length,
+                    sources: activeSources.length,
                     articlesProcessed: 1,
                     readingTime: "1 min",
                     generatedAt: new Date().toLocaleString(),
-                    focusArea: promptTemplates[selectedPrompt].title
+                    focusArea: promptTemplates[selectedPrompt].title,
+                    aiProcessed: false
                 }
             };
             
@@ -261,12 +301,9 @@ function App() {
                         <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent leading-tight py-2">
                             Manpreet's AI Digest
                         </h1>
-                        <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-sm font-semibold ml-2 shadow-lg">
-                            LIVE RSS
-                        </span>
                     </div>
                     <p className="text-xl text-gray-300 mb-2">
-                        Your personalized AI newsletter, powered by real RSS feeds
+                        Your personalized AI newsletter, powered by Groq AI
                     </p>
                     <p className="text-gray-400">
                         Consolidates {sources.filter(s => s.status === 'active').length} daily newsletters into one focused digest • Saves ~45 minutes daily
@@ -383,11 +420,11 @@ function App() {
                             {isLoading ? (
                                 <span className="flex items-center gap-3">
                                     <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                    Fetching RSS Feeds...
+                                    Processing with AI...
                                 </span>
                             ) : (
                                 <span className="flex items-center gap-2">
-                                    🚀 Generate Live RSS Digest
+                                    🚀 Generate My AI Digest
                                     <span className="group-hover:translate-x-1 transition-transform duration-200">→</span>
                                 </span>
                             )}
@@ -395,7 +432,7 @@ function App() {
 
                         {selectedPrompt && !isLoading && (
                             <p className="mt-3 text-gray-400 text-sm">
-                                Focus: {promptTemplates[selectedPrompt].title} • Live RSS Data
+                                Focus: {promptTemplates[selectedPrompt].title} • Powered by Groq AI
                             </p>
                         )}
                     </div>
@@ -413,6 +450,9 @@ function App() {
                                 <span className="flex items-center gap-1">📄 {digest.metadata.articlesProcessed} Articles</span>
                                 <span className="flex items-center gap-1">⏱️ {digest.metadata.readingTime} Read</span>
                                 <span className="flex items-center gap-1">🎯 {digest.metadata.focusArea}</span>
+                                {digest.metadata.aiProcessed && (
+                                    <span className="flex items-center gap-1 text-green-400">🤖 AI Processed</span>
+                                )}
                             </div>
                             <p className="text-gray-500 text-xs mt-2">Generated: {digest.metadata.generatedAt}</p>
                         </div>
@@ -464,11 +504,11 @@ function App() {
                         {/* Digest Footer */}
                         <div className="bg-gradient-to-r from-gray-800/50 to-gray-900/50 p-6 text-center border-t border-white/10">
                             <p className="text-gray-400 text-sm">
-                                ✨ Generated from Live RSS Feeds • Tailored for Manpreet's interests •
+                                ✨ Generated with Groq AI • Organized into 7 focused sections •
                                 <span className="text-blue-400 font-medium ml-1">Save 45+ minutes daily</span>
                             </p>
                             <div className="mt-3 flex justify-center gap-4 text-xs text-gray-500">
-                                <span>📡 Live RSS Integration</span>
+                                <span>🤖 AI Processed</span>
                                 <span>•</span>
                                 <span>📱 Mobile optimized</span>
                                 <span>•</span>

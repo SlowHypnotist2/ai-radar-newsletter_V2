@@ -79,92 +79,48 @@ function App() {
         }
     };
 
-    // RSS Fetching Function
-    const fetchRSSFeed = async (url) => {
-        try {
-            // Use CORS proxy to fetch RSS feeds
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-            const response = await fetch(proxyUrl);
-            const data = await response.json();
-            
-            // Parse XML content
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(data.contents, 'text/xml');
-            
-            // Extract items from RSS feed
-            const items = Array.from(xmlDoc.querySelectorAll('entry')).map(item => {
-                const title = item.querySelector('title')?.textContent || 'No title';
-                const summary = item.querySelector('summary')?.textContent || 'No summary available';
-                const link = item.querySelector('link')?.getAttribute('href') || '#';
-                const published = item.querySelector('published')?.textContent || new Date().toISOString();
-                
-                return {
-                    title: title.trim(),
-                    summary: summary.trim().substring(0, 300) + '...',
-                    link,
-                    published: new Date(published)
-                };
-            });
-            
-            return items.slice(0, 8); // Get latest 8 items per source
-        } catch (error) {
-            console.error('Error fetching RSS feed:', error);
-            return [];
-        }
-    };
-
-    // Generate Digest with AI Processing
+    // Simplified Generate Digest - All processing happens server-side
     const generateDigest = async () => {
         setIsLoading(true);
         
         try {
-            // Get active sources
+            // Get active sources URLs only
             const activeSources = sources.filter(s => s.status === 'active');
+            const rssUrls = activeSources.map(source => source.rssUrl);
             
-            // Fetch all RSS feeds
-            const feedPromises = activeSources.map(async (source) => {
-                const items = await fetchRSSFeed(source.rssUrl);
-                return {
-                    sourceName: source.name,
-                    items: items
-                };
+            console.log('Calling Netlify function with:', {
+                rssUrls: rssUrls,
+                focusArea: promptTemplates[selectedPrompt].title
             });
             
-            const allFeeds = await Promise.all(feedPromises);
-            
-            // Combine all RSS content
-            let allItems = [];
-            allFeeds.forEach(feed => {
-                feed.items.forEach(item => {
-                    allItems.push({
-                        ...item,
-                        source: feed.sourceName
-                    });
-                });
-            });
-            
-            // Sort by publication date
-            allItems.sort((a, b) => new Date(b.published) - new Date(a.published));
-            
-            // Call Netlify function with Groq AI processing
+            // Call Netlify function - it handles everything server-side
             const response = await fetch('/.netlify/functions/generateDigest', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    rssContent: allItems,
+                    rssUrls: rssUrls,  // Send URLs, not content
                     focusArea: promptTemplates[selectedPrompt].title
                 })
             });
             
-            const result = await response.json();
+            console.log('Response status:', response.status);
             
-            if (result.success) {
-                // Organize AI processed content into display format
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('API Error Response:', errorText);
+                throw new Error(`API request failed: ${response.status} - ${errorText}`);
+            }
+            
+            const result = await response.json();
+            console.log('API Success Response:', result);
+            
+            if (result.success && result.digest) {
+                // Transform AI response into display format
                 const aiDigest = result.digest;
                 
-                // Map the 7 AI categories to display sections
+                // Map AI categories to display sections
                 const sections = [
                     {
                         title: "🔥 Latest AI News",
@@ -207,8 +163,8 @@ function App() {
                     sections: sections.filter(section => section.items.length > 0),
                     metadata: {
                         sources: activeSources.length,
-                        articlesProcessed: result.totalItems || allItems.length,
-                        readingTime: Math.ceil((result.totalItems || allItems.length) * 0.3) + " min",
+                        articlesProcessed: result.totalItems || 0,
+                        readingTime: Math.ceil((result.totalItems || 0) * 0.3) + " min",
                         generatedAt: new Date().toLocaleString(),
                         focusArea: promptTemplates[selectedPrompt].title,
                         aiProcessed: true
@@ -224,24 +180,24 @@ function App() {
         } catch (error) {
             console.error('Error generating digest:', error);
             
-            // Fallback to basic processing if AI fails
+            // Fallback digest on error
             const activeSources = sources.filter(s => s.status === 'active');
-            const mockDigest = {
+            const errorDigest = {
                 title: `🤖 Manpreet's AI Digest - ${new Date().toLocaleDateString('en-US', {
                     weekday: 'long',
                     year: 'numeric', 
                     month: 'long',
                     day: 'numeric'
                 })}`,
-                summary: "AI processing temporarily unavailable - showing basic RSS content",
+                summary: "AI processing temporarily unavailable - please try again",
                 sections: [
                     {
-                        title: "🔥 Latest Content from RSS Feeds",
+                        title: "🔧 System Status",
                         items: [
                             {
-                                title: "AI Processing Error - RSS Feeds Loading",
+                                title: "AI Processing Error",
                                 source: "System",
-                                summary: "There was an issue with AI processing. Please try again. Your RSS feeds are connected and working.",
+                                summary: `Error: ${error.message}. Please check your internet connection and try again. If the error persists, the Groq AI service may be temporarily unavailable.`,
                                 link: "#",
                                 priority: "high"
                             }
@@ -250,7 +206,7 @@ function App() {
                 ],
                 metadata: {
                     sources: activeSources.length,
-                    articlesProcessed: 1,
+                    articlesProcessed: 0,
                     readingTime: "1 min",
                     generatedAt: new Date().toLocaleString(),
                     focusArea: promptTemplates[selectedPrompt].title,
@@ -258,7 +214,7 @@ function App() {
                 }
             };
             
-            setDigest(mockDigest);
+            setDigest(errorDigest);
         }
         
         setIsLoading(false);

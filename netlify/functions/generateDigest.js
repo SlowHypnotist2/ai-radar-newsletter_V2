@@ -6,15 +6,25 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-// Enhanced timeout fetch wrapper
+// Enhanced timeout fetch wrapper with cache busting
 const fetchWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
   try {
-    const response = await fetch(url, {
+    // Add cache-busting timestamp to URL
+    const cacheBustedUrl = url + (url.includes('?') ? '&' : '?') + `t=${Date.now()}&cb=${Math.random()}`;
+    console.log(`🔄 Fetching with cache-busting: ${cacheBustedUrl}`);
+    
+    const response = await fetch(cacheBustedUrl, {
       ...options,
       signal: controller.signal,
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        ...options.headers
+      }
     });
     clearTimeout(timeoutId);
     return response;
@@ -36,7 +46,7 @@ const callGroqWithRetry = async (messages, maxRetries = 2) => {
       const model = models[modelIndex];
       
       try {
-        console.log(`Attempt ${attempt + 1}/${maxRetries + 1}, Model: ${model}`);
+        console.log(`🤖 Attempt ${attempt + 1}/${maxRetries + 1}, Model: ${model}`);
         
         // Create completion with timeout
         const completion = await Promise.race([
@@ -60,7 +70,7 @@ const callGroqWithRetry = async (messages, maxRetries = 2) => {
         
         // If it's the last model and last attempt, continue to next attempt
         if (modelIndex === models.length - 1 && attempt < maxRetries) {
-          console.log(`Waiting 2s before retry...`);
+          console.log(`⏳ Waiting 2s before retry...`);
           await new Promise(resolve => setTimeout(resolve, 2000));
           break;
         }
@@ -77,22 +87,29 @@ const callGroqWithRetry = async (messages, maxRetries = 2) => {
   }
 };
 
-// RSS fetching function (enhanced with timeout)
+// RSS fetching function with enhanced debugging
 const fetchRSSFeed = async (url, sourceName) => {
+  const startTime = Date.now();
+  console.log(`📡 Starting RSS fetch for ${sourceName}: ${url}`);
+  
   try {
     const response = await fetchWithTimeout(url, {}, 10000); // 10s timeout for RSS
     
     if (!response.ok) {
+      console.error(`❌ HTTP Error for ${sourceName}: ${response.status} ${response.statusText}`);
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
     const xmlText = await response.text();
+    console.log(`📄 Retrieved XML for ${sourceName}: ${xmlText.length} characters`);
     
-    // Simple XML parsing for RSS feeds
+    // Enhanced XML parsing for RSS feeds with better date handling
     const items = [];
     const entryMatches = xmlText.match(/<entry[^>]*>[\s\S]*?<\/entry>/g) || [];
     
-    entryMatches.slice(0, 8).forEach(entry => {
+    console.log(`📰 Found ${entryMatches.length} entries for ${sourceName}`);
+    
+    entryMatches.slice(0, 8).forEach((entry, index) => {
       const titleMatch = entry.match(/<title[^>]*>([\s\S]*?)<\/title>/);
       const summaryMatch = entry.match(/<summary[^>]*>([\s\S]*?)<\/summary>/) || 
                           entry.match(/<content[^>]*>([\s\S]*?)<\/content>/);
@@ -104,26 +121,47 @@ const fetchRSSFeed = async (url, sourceName) => {
       const title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').trim() : 'No title';
       const summary = summaryMatch ? summaryMatch[1].replace(/<[^>]*>/g, '').trim().substring(0, 300) + '...' : 'No summary available';
       const link = linkMatch ? linkMatch[1] : '#';
-      const published = publishedMatch ? publishedMatch[1] : new Date().toISOString();
+      const publishedStr = publishedMatch ? publishedMatch[1] : new Date().toISOString();
+      
+      const publishedDate = new Date(publishedStr);
+      const isValidDate = !isNaN(publishedDate.getTime());
+      
+      // Log each item's date for debugging
+      console.log(`  📄 Entry ${index + 1}: "${title.substring(0, 50)}..." - Date: ${publishedDate.toISOString()} (${isValidDate ? 'Valid' : 'Invalid'})`);
       
       items.push({
         title,
         summary,
         link,
-        published: new Date(published),
+        published: isValidDate ? publishedDate : new Date(),
         source: sourceName
       });
     });
     
+    // Sort items by date (newest first) and log the date range
+    items.sort((a, b) => new Date(b.published) - new Date(a.published));
+    
+    if (items.length > 0) {
+      const newestDate = new Date(items[0].published).toLocaleString();
+      const oldestDate = new Date(items[items.length - 1].published).toLocaleString();
+      console.log(`📅 Date range for ${sourceName}: ${newestDate} to ${oldestDate}`);
+    }
+    
+    const fetchTime = Date.now() - startTime;
+    console.log(`✅ Successfully fetched ${items.length} items from ${sourceName} in ${fetchTime}ms`);
+    
     return items;
   } catch (error) {
-    console.error(`Error fetching RSS feed ${url}:`, error.message);
+    const fetchTime = Date.now() - startTime;
+    console.error(`❌ Error fetching RSS feed ${sourceName} after ${fetchTime}ms:`, error.message);
     return []; // Return empty array instead of failing
   }
 };
 
 // Create fallback digest when AI fails
 const createFallbackDigest = (rssContent) => {
+  console.log('🔄 Creating fallback digest with', rssContent.length, 'items');
+  
   const fallbackDigest = {
     latestNews: [],
     helpfulArticles: [],
@@ -146,12 +184,18 @@ const createFallbackDigest = (rssContent) => {
     });
   });
   
+  const totalItems = Object.values(fallbackDigest).flat().length;
+  console.log(`✅ Created fallback digest with ${totalItems} items across 7 categories`);
+  
   return fallbackDigest;
 };
 
 exports.handler = async (event, context) => {
   // Set function timeout context
   context.callbackWaitsForEmptyEventLoop = false;
+  
+  const functionStartTime = Date.now();
+  console.log(`🚀 Function started at: ${new Date().toISOString()}`);
   
   // Handle CORS for browser requests
   const headers = {
@@ -179,11 +223,13 @@ exports.handler = async (event, context) => {
     };
   }
 
-  const startTime = Date.now();
   let rssContent = [];
 
   try {
-    const { focusArea, sources } = JSON.parse(event.body);
+    const requestBody = JSON.parse(event.body);
+    console.log('📨 Request body received:', JSON.stringify(requestBody, null, 2));
+    
+    const { focusArea, sources, rssUrls } = requestBody;
 
     // Default RSS sources if not provided
     const defaultSources = [
@@ -214,41 +260,73 @@ exports.handler = async (event, context) => {
     ];
 
     const sourcesToFetch = sources || defaultSources;
-    console.log(`🔄 Fetching RSS feeds from ${sourcesToFetch.length} sources`);
+    console.log(`📡 Fetching RSS feeds from ${sourcesToFetch.length} sources`);
+    console.log('📋 Sources to fetch:', sourcesToFetch.map(s => `${s.name}: ${s.rssUrl}`));
 
-    // Fetch RSS feeds with timeout protection
+    // Fetch RSS feeds with timeout protection and detailed logging
     const feedPromises = sourcesToFetch.map(source => 
       fetchRSSFeed(source.rssUrl, source.name)
     );
     
+    console.log('⏳ Starting parallel RSS feed fetching...');
+    const fetchStartTime = Date.now();
+    
     // Use Promise.allSettled to continue even if some feeds fail
     const feedResults = await Promise.allSettled(feedPromises);
     
-    // Combine successful RSS content
+    const fetchEndTime = Date.now();
+    console.log(`⏱️ RSS fetching completed in ${fetchEndTime - fetchStartTime}ms`);
+    
+    // Combine successful RSS content with detailed logging
     let allItems = [];
     feedResults.forEach((result, index) => {
+      const sourceName = sourcesToFetch[index].name;
       if (result.status === 'fulfilled') {
+        const itemCount = result.value.length;
         allItems.push(...result.value);
+        console.log(`✅ ${sourceName}: ${itemCount} items fetched successfully`);
       } else {
-        console.warn(`RSS feed ${sourcesToFetch[index].name} failed:`, result.reason?.message);
+        console.error(`❌ ${sourceName}: Failed - ${result.reason?.message}`);
       }
     });
 
-    // Sort by publication date
+    // Sort by publication date and log the freshest items
     allItems.sort((a, b) => new Date(b.published) - new Date(a.published));
     
-    console.log(`✅ Fetched ${allItems.length} RSS items successfully`);
+    console.log(`📊 Total items fetched: ${allItems.length}`);
+    
+    if (allItems.length > 0) {
+      const freshestItem = allItems[0];
+      const oldestItem = allItems[allItems.length - 1];
+      console.log(`📅 Content date range:`);
+      console.log(`  🆕 Freshest: "${freshestItem.title.substring(0, 50)}..." from ${freshestItem.source} - ${new Date(freshestItem.published).toLocaleString()}`);
+      console.log(`  📜 Oldest: "${oldestItem.title.substring(0, 50)}..." from ${oldestItem.source} - ${new Date(oldestItem.published).toLocaleString()}`);
+      
+      // Check for truly fresh content (within last 24 hours)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const freshItems = allItems.filter(item => new Date(item.published) > oneDayAgo);
+      console.log(`🔥 Fresh items (within 24h): ${freshItems.length}/${allItems.length}`);
+      
+      if (freshItems.length === 0) {
+        console.warn('⚠️ WARNING: No items found within the last 24 hours! This might indicate RSS feed issues.');
+      }
+    }
 
     // Prepare content for AI processing
     rssContent = allItems.slice(0, 25).map(item => ({
       title: item.title,
       summary: item.summary,
       link: item.link,
-      source: item.source
+      source: item.source,
+      published: item.published.toISOString()
     }));
 
+    console.log(`🤖 Preparing ${rssContent.length} items for AI processing`);
+
     // Check if we have enough time left for AI processing
-    const elapsedTime = Date.now() - startTime;
+    const elapsedTime = Date.now() - functionStartTime;
+    console.log(`⏱️ Elapsed time before AI processing: ${elapsedTime}ms`);
+    
     if (elapsedTime > 20000) { // If more than 20s elapsed
       console.warn('⏰ Running out of time, using fallback digest');
       throw new Error('Function timeout approaching, using fallback');
@@ -258,6 +336,7 @@ exports.handler = async (event, context) => {
 You are an expert AI newsletter editor. Analyze the following RSS feed content and organize it into exactly 7 categories. 
 
 Focus Area: ${focusArea}
+Current Date: ${new Date().toISOString()}
 
 Categorize content into these 7 fields:
 1. "latestNews" - Breaking AI news, company announcements, major releases
@@ -273,7 +352,7 @@ For each category, create an array of items with:
 - summary: 2-3 sentence summary
 - link: Direct URL to article/resource
 - source: Which newsletter this came from
-- priority: "high", "medium", or "low"
+- priority: "high" (published within 24h), "medium" (published within 48h), or "low" (older)
 
 RSS CONTENT TO PROCESS:
 ${JSON.stringify(rssContent.slice(0, 20), null, 2)}
@@ -291,6 +370,7 @@ IMPORTANT: Respond ONLY with valid JSON. Do not wrap in code blocks or add any o
     `;
 
     console.log('🤖 Sending to Groq AI with enhanced retry logic...');
+    const aiStartTime = Date.now();
 
     // Try AI processing with retry logic
     let parsedDigest;
@@ -300,7 +380,9 @@ IMPORTANT: Respond ONLY with valid JSON. Do not wrap in code blocks or add any o
       ]);
 
       const aiResponse = completion.choices[0]?.message?.content;
-      console.log('✅ Raw AI Response received');
+      const aiEndTime = Date.now();
+      console.log(`✅ Raw AI Response received in ${aiEndTime - aiStartTime}ms`);
+      console.log(`📝 AI Response preview: ${aiResponse.substring(0, 200)}...`);
       
       // Clean the response - remove markdown code blocks if present
       let cleanedResponse = aiResponse.trim();
@@ -317,13 +399,21 @@ IMPORTANT: Respond ONLY with valid JSON. Do not wrap in code blocks or add any o
       parsedDigest = JSON.parse(cleanedResponse);
       console.log('✅ Successfully parsed AI response');
       
+      // Log the distribution of content across categories
+      Object.entries(parsedDigest).forEach(([category, items]) => {
+        console.log(`📊 ${category}: ${items.length} items`);
+      });
+      
     } catch (aiError) {
       console.warn('⚠️ AI processing failed, using fallback:', aiError.message);
       parsedDigest = createFallbackDigest(rssContent);
     }
 
-    const totalProcessingTime = Date.now() - startTime;
+    const totalProcessingTime = Date.now() - functionStartTime;
     console.log(`⏱️ Total processing time: ${totalProcessingTime}ms`);
+
+    const totalItems = Object.values(parsedDigest).flat().length;
+    console.log(`📈 Final digest contains ${totalItems} items across ${Object.keys(parsedDigest).length} categories`);
 
     return {
       statusCode: 200,
@@ -332,9 +422,17 @@ IMPORTANT: Respond ONLY with valid JSON. Do not wrap in code blocks or add any o
         success: true,
         digest: parsedDigest,
         processedAt: new Date().toISOString(),
-        totalItems: Object.values(parsedDigest).flat().length,
+        totalItems: totalItems,
         processingTimeMs: totalProcessingTime,
-        usedFallback: !rssContent.length || Object.values(parsedDigest).flat().length === 0
+        usedFallback: !rssContent.length || totalItems === 0,
+        debug: {
+          rssItemsFound: allItems.length,
+          freshItemsCount: allItems.filter(item => 
+            new Date(item.published) > new Date(Date.now() - 24 * 60 * 60 * 1000)
+          ).length,
+          oldestItemDate: allItems.length > 0 ? new Date(allItems[allItems.length - 1].published).toISOString() : null,
+          newestItemDate: allItems.length > 0 ? new Date(allItems[0].published).toISOString() : null
+        }
       }),
     };
 
@@ -348,7 +446,7 @@ IMPORTANT: Respond ONLY with valid JSON. Do not wrap in code blocks or add any o
       console.log('🆘 Created emergency fallback digest');
     }
     
-    const totalProcessingTime = Date.now() - startTime;
+    const totalProcessingTime = Date.now() - functionStartTime;
     
     return {
       statusCode: emergencyDigest ? 200 : 500,
@@ -360,7 +458,11 @@ IMPORTANT: Respond ONLY with valid JSON. Do not wrap in code blocks or add any o
         message: error.message,
         processingTimeMs: totalProcessingTime,
         usedFallback: true,
-        fallbackReason: error.message.includes('timeout') ? 'timeout' : 'ai_unavailable'
+        fallbackReason: error.message.includes('timeout') ? 'timeout' : 'ai_unavailable',
+        debug: {
+          functionStartTime: new Date(functionStartTime).toISOString(),
+          errorTime: new Date().toISOString()
+        }
       }),
     };
   }

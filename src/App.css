@@ -19,7 +19,8 @@ body {
         sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background: linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #2d1b69 100%);
+    /* Updated background gradient */
+    background: linear-gradient(135deg, #111827 0%, #1f2937 50%, #2c3e50 100%);
     min-height: 100vh;
     color: #e2e8f0;
 }
@@ -34,18 +35,18 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-    background: rgba(26, 32, 44, 0.5);
+    background: rgba(31, 41, 55, 0.5); /* Updated to match new color scheme */
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #4a5568, #718096);
+    background: linear-gradient(135deg, #4b5563, #6b7280); /* Updated scrollbar colors */
     border-radius: 4px;
     transition: background 0.3s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #718096, #a0aec0);
+    background: linear-gradient(135deg, #6b7280, #9ca3af); /* Updated hover colors */
 }
 
 /* Custom animations */
@@ -113,17 +114,17 @@ body {
 
 /* Glass morphism effects */
 .glass-effect {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08); /* Slightly reduced opacity for better contrast */
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15); /* Reduced border opacity */
 }
 
 .glass-effect-strong {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.12); /* Adjusted for new background */
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 /* Button hover effects */
@@ -178,10 +179,10 @@ body {
 
 /* Source card styles */
 .source-card {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%); /* Adjusted opacity */
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15); /* Reduced border opacity */
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
@@ -205,35 +206,35 @@ body {
 
 .source-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4); /* Stronger shadow for better visibility */
     border-color: rgba(102, 126, 234, 0.5);
 }
 
 /* Status-specific styles */
 .source-active {
     border-color: #10b981;
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.1) 100%);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.08) 100%); /* Adjusted for new background */
 }
 
 .source-inactive {
     border-color: #6b7280;
-    background: linear-gradient(135deg, rgba(107, 114, 128, 0.2) 0%, rgba(107, 114, 128, 0.1) 100%);
+    background: linear-gradient(135deg, rgba(107, 114, 128, 0.15) 0%, rgba(107, 114, 128, 0.08) 100%); /* Adjusted for new background */
 }
 
 /* Digest container styles */
 .digest-container {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%); /* Adjusted opacity */
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15); /* Reduced border opacity */
 }
 
 .digest-section {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08); /* Reduced border opacity */
 }
 
 .digest-item {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.04); /* Reduced background opacity */
     transition: all 0.3s ease;
     position: relative;
 }
@@ -250,7 +251,7 @@ body {
 }
 
 .digest-item:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08); /* Adjusted hover opacity */
     transform: translateX(8px);
 }
 
@@ -300,7 +301,7 @@ a:hover::after {
 
 /* Loading spinner */
 .loading-spinner {
-    border: 3px solid rgba(255, 255, 255, 0.3);
+    border: 3px solid rgba(255, 255, 255, 0.2); /* Reduced opacity for better contrast */
     border-radius: 50%;
     border-top: 3px solid #667eea;
     width: 24px;
@@ -339,15 +340,15 @@ a:hover::after {
 
 /* Form elements */
 input[type="email"] {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08); /* Adjusted opacity */
+    border: 1px solid rgba(255, 255, 255, 0.15); /* Reduced border opacity */
     color: #e2e8f0;
     transition: all 0.3s ease;
 }
 
 input[type="email"]:focus {
     border-color: #667eea;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.12); /* Adjusted focus opacity */
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 

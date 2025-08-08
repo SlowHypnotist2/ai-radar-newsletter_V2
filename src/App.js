@@ -6,7 +6,7 @@ function App() {
         {
             id: 1,
             name: "The Rundown University",
-            rssUrl: "https://kill-the-newsletter.com/feeds/j3o5qsdo3qyhv731fbsi.xml",
+            rssUrl: "https://kill-the-newsletter.com/feeds/j3o5qsdo3qyhv731fbsl.xml",
             status: "active",
             lastUpdate: "2 hours ago"
         },
@@ -51,6 +51,7 @@ function App() {
     const [isLoading, setIsLoading] = useState(false);
     const [digest, setDigest] = useState(null);
     const [selectedPrompt, setSelectedPrompt] = useState('actionable');
+    const [debugInfo, setDebugInfo] = useState(null); // New: For debugging
 
     const promptTemplates = {
         actionable: {
@@ -79,42 +80,83 @@ function App() {
         }
     };
 
-    // Simplified Generate Digest - All processing happens server-side
+    // NEW: Function to test RSS feeds directly
+    const testRSSFeeds = async () => {
+        const activeSources = sources.filter(s => s.status === 'active');
+        const results = [];
+        
+        for (const source of activeSources) {
+            try {
+                // Add cache-busting parameter
+                const cacheBustUrl = `${source.rssUrl}?t=${Date.now()}&cb=${Math.random()}`;
+                const response = await fetch(`/.netlify/functions/testRSS`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rssUrl: cacheBustUrl, sourceName: source.name })
+                });
+                
+                const result = await response.json();
+                results.push(result);
+            } catch (error) {
+                results.push({
+                    source: source.name,
+                    error: error.message
+                });
+            }
+        }
+        
+        setDebugInfo(results);
+        console.log('RSS Test Results:', results);
+    };
+
+    // UPDATED: Generate Digest with enhanced debugging
     const generateDigest = async () => {
         setIsLoading(true);
+        setDebugInfo(null); // Clear previous debug info
         
         try {
-            // Get active sources URLs only
+            // Get active sources URLs with cache-busting
             const activeSources = sources.filter(s => s.status === 'active');
-            const rssUrls = activeSources.map(source => source.rssUrl);
+            const timestamp = Date.now();
+            const rssUrls = activeSources.map(source => 
+                `${source.rssUrl}?t=${timestamp}&cb=${Math.random()}`
+            );
             
-            console.log('Calling Netlify function with:', {
-                rssUrls: rssUrls,
-                focusArea: promptTemplates[selectedPrompt].title
-            });
+            console.log('🚀 Starting digest generation...');
+            console.log('Active sources:', activeSources.length);
+            console.log('RSS URLs with cache-busting:', rssUrls);
             
-            // Call Netlify function - it handles everything server-side
+            // Call Netlify function with enhanced payload
             const response = await fetch('/.netlify/functions/generateDigest', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    rssUrls: rssUrls,  // Send URLs, not content
-                    focusArea: promptTemplates[selectedPrompt].title
+                    rssUrls: rssUrls,  
+                    focusArea: promptTemplates[selectedPrompt].title,
+                    debug: true, // Enable debug mode
+                    timestamp: timestamp,
+                    sources: activeSources.map(s => ({ name: s.name, url: s.rssUrl }))
                 })
             });
             
-            console.log('Response status:', response.status);
+            console.log('📡 API Response status:', response.status);
             
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error('API Error Response:', errorText);
+                console.error('❌ API Error Response:', errorText);
                 throw new Error(`API request failed: ${response.status} - ${errorText}`);
             }
             
             const result = await response.json();
-            console.log('API Success Response:', result);
+            console.log('✅ API Success Response:', result);
+            
+            // Store debug info if available
+            if (result.debugInfo) {
+                setDebugInfo(result.debugInfo);
+                console.log('🔍 Debug Info:', result.debugInfo);
+            }
             
             if (result.success && result.digest) {
                 // Transform AI response into display format
@@ -167,7 +209,9 @@ function App() {
                         readingTime: Math.ceil((result.totalItems || 0) * 0.3) + " min",
                         generatedAt: new Date().toLocaleString(),
                         focusArea: promptTemplates[selectedPrompt].title,
-                        aiProcessed: true
+                        aiProcessed: true,
+                        debugTimestamp: timestamp, // New: For debugging
+                        latestArticleDate: result.latestArticleDate || 'Unknown' // New: Latest article date
                     }
                 };
                 
@@ -178,9 +222,9 @@ function App() {
             }
             
         } catch (error) {
-            console.error('Error generating digest:', error);
+            console.error('❌ Error generating digest:', error);
             
-            // Fallback digest on error
+            // Enhanced error digest with debug info
             const activeSources = sources.filter(s => s.status === 'active');
             const errorDigest = {
                 title: `🤖 Manpreet's AI Digest - ${new Date().toLocaleDateString('en-US', {
@@ -189,15 +233,15 @@ function App() {
                     month: 'long',
                     day: 'numeric'
                 })}`,
-                summary: "AI processing temporarily unavailable - please try again",
+                summary: "AI processing encountered an issue - debug information available below",
                 sections: [
                     {
-                        title: "🔧 System Status",
+                        title: "🔧 Debug Information",
                         items: [
                             {
-                                title: "AI Processing Error",
+                                title: "Processing Error Detected",
                                 source: "System",
-                                summary: `Error: ${error.message}. Please check your internet connection and try again. If the error persists, the Groq AI service may be temporarily unavailable.`,
+                                summary: `Error: ${error.message}. Check browser console for detailed logs. This could be due to RSS feed caching, network issues, or Groq AI service limits.`,
                                 link: "#",
                                 priority: "high"
                             }
@@ -210,7 +254,8 @@ function App() {
                     readingTime: "1 min",
                     generatedAt: new Date().toLocaleString(),
                     focusArea: promptTemplates[selectedPrompt].title,
-                    aiProcessed: false
+                    aiProcessed: false,
+                    error: error.message
                 }
             };
             
@@ -265,6 +310,36 @@ function App() {
                         Consolidates {sources.filter(s => s.status === 'active').length} daily newsletters into one focused digest • Saves ~45 minutes daily
                     </p>
                 </header>
+
+                {/* NEW: Debug Section */}
+                {debugInfo && (
+                    <section className="mb-12">
+                        <div className="bg-yellow-900/20 border border-yellow-500/50 rounded-xl p-6">
+                            <div className="flex items-center gap-3 mb-4">
+                                <span className="text-2xl">🔍</span>
+                                <h2 className="text-xl font-bold text-yellow-300">Debug Information</h2>
+                            </div>
+                            <div className="space-y-3 max-h-60 overflow-y-auto">
+                                {debugInfo.map((info, index) => (
+                                    <div key={index} className="bg-black/30 p-3 rounded text-sm">
+                                        <p className="text-yellow-300 font-semibold">{info.source || `Feed ${index + 1}`}</p>
+                                        {info.error ? (
+                                            <p className="text-red-300">❌ Error: {info.error}</p>
+                                        ) : (
+                                            <>
+                                                <p className="text-green-300">✅ Items found: {info.itemCount || 0}</p>
+                                                <p className="text-gray-300">Latest: {info.latestDate || 'Unknown'}</p>
+                                                {info.sampleTitle && (
+                                                    <p className="text-blue-300 truncate">Sample: {info.sampleTitle}</p>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </section>
+                )}
 
                 {/* Email Sources Section */}
                 <section className="mb-12">
@@ -367,7 +442,7 @@ function App() {
 
                 {/* Generate Digest */}
                 <section className="mb-12">
-                    <div className="text-center">
+                    <div className="text-center space-y-4">
                         <button
                             onClick={generateDigest}
                             disabled={isLoading}
@@ -384,6 +459,15 @@ function App() {
                                     <span className="group-hover:translate-x-1 transition-transform duration-200">→</span>
                                 </span>
                             )}
+                        </button>
+
+                        {/* NEW: Test RSS Feeds Button */}
+                        <button
+                            onClick={testRSSFeeds}
+                            disabled={isLoading}
+                            className="block mx-auto px-6 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 text-white font-medium rounded-lg text-sm transition-all duration-200 hover:shadow-lg"
+                        >
+                            🔍 Test RSS Feeds (Debug)
                         </button>
 
                         {selectedPrompt && !isLoading && (
@@ -409,8 +493,14 @@ function App() {
                                 {digest.metadata.aiProcessed && (
                                     <span className="flex items-center gap-1 text-green-400">🤖 AI Processed</span>
                                 )}
+                                {digest.metadata.latestArticleDate && (
+                                    <span className="flex items-center gap-1 text-blue-400">📅 Latest: {digest.metadata.latestArticleDate}</span>
+                                )}
                             </div>
                             <p className="text-gray-500 text-xs mt-2">Generated: {digest.metadata.generatedAt}</p>
+                            {digest.metadata.debugTimestamp && (
+                                <p className="text-yellow-500 text-xs">Debug ID: {digest.metadata.debugTimestamp}</p>
+                            )}
                         </div>
 
                         {/* Digest Content */}

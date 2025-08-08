@@ -87,7 +87,7 @@ const callGroqWithRetry = async (messages, maxRetries = 2) => {
   }
 };
 
-// RSS fetching function with enhanced debugging
+// FIXED RSS fetching function with proper XML validation
 const fetchRSSFeed = async (url, sourceName) => {
   const startTime = Date.now();
   console.log(`📡 Starting RSS fetch for ${sourceName}: ${url}`);
@@ -100,28 +100,80 @@ const fetchRSSFeed = async (url, sourceName) => {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
-    const xmlText = await response.text();
-    console.log(`📄 Retrieved XML for ${sourceName}: ${xmlText.length} characters`);
+    const responseText = await response.text();
+    console.log(`📄 Retrieved content for ${sourceName}: ${responseText.length} characters`);
     
-    // Enhanced XML parsing for RSS feeds with better date handling
+    // Check if response is JSON error instead of XML
+    let jsonError = null;
+    try {
+      const possibleJson = JSON.parse(responseText);
+      if (possibleJson.error || possibleJson.message) {
+        jsonError = possibleJson;
+        console.warn(`⚠️ ${sourceName} returned JSON error:`, jsonError);
+      }
+    } catch (e) {
+      // Good! It's not JSON, should be XML
+    }
+    
+    // If it's a JSON error, return empty array
+    if (jsonError) {
+      console.warn(`❌ ${sourceName} feed unavailable: ${jsonError.error || jsonError.message}`);
+      return [];
+    }
+    
+    // Check if it's actually XML/RSS content
+    if (!responseText.includes('<') || (!responseText.includes('<entry') && !responseText.includes('<item'))) {
+      console.warn(`❌ ${sourceName} did not return valid RSS/XML content`);
+      console.warn(`📄 Content preview: ${responseText.substring(0, 200)}...`);
+      return [];
+    }
+    
+    const xmlText = responseText;
+    
+    // Enhanced XML parsing for both RSS and Atom feeds
     const items = [];
-    const entryMatches = xmlText.match(/<entry[^>]*>[\s\S]*?<\/entry>/g) || [];
     
-    console.log(`📰 Found ${entryMatches.length} entries for ${sourceName}`);
+    // Try Atom format first (most Kill-the-Newsletter feeds are Atom)
+    let entryMatches = xmlText.match(/<entry[^>]*>[\s\S]*?<\/entry>/g) || [];
+    let isAtom = true;
+    
+    // If no Atom entries found, try RSS format
+    if (entryMatches.length === 0) {
+      entryMatches = xmlText.match(/<item[^>]*>[\s\S]*?<\/item>/g) || [];
+      isAtom = false;
+    }
+    
+    console.log(`📰 Found ${entryMatches.length} ${isAtom ? 'Atom entries' : 'RSS items'} for ${sourceName}`);
     
     entryMatches.slice(0, 8).forEach((entry, index) => {
-      const titleMatch = entry.match(/<title[^>]*>([\s\S]*?)<\/title>/);
-      const summaryMatch = entry.match(/<summary[^>]*>([\s\S]*?)<\/summary>/) || 
-                          entry.match(/<content[^>]*>([\s\S]*?)<\/content>/);
-      const linkMatch = entry.match(/<link[^>]*href="([^"]*)"/) || 
-                       entry.match(/<link[^>]*>([^<]*)<\/link>/);
-      const publishedMatch = entry.match(/<published[^>]*>([\s\S]*?)<\/published>/) ||
-                            entry.match(/<updated[^>]*>([\s\S]*?)<\/updated>/);
+      let title, summary, link, publishedStr;
       
-      const title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').trim() : 'No title';
-      const summary = summaryMatch ? summaryMatch[1].replace(/<[^>]*>/g, '').trim().substring(0, 300) + '...' : 'No summary available';
-      const link = linkMatch ? linkMatch[1] : '#';
-      const publishedStr = publishedMatch ? publishedMatch[1] : new Date().toISOString();
+      if (isAtom) {
+        // Atom format parsing
+        const titleMatch = entry.match(/<title[^>]*>([\s\S]*?)<\/title>/);
+        const summaryMatch = entry.match(/<summary[^>]*>([\s\S]*?)<\/summary>/) || 
+                            entry.match(/<content[^>]*>([\s\S]*?)<\/content>/);
+        const linkMatch = entry.match(/<link[^>]*href="([^"]*)"/) || 
+                         entry.match(/<link[^>]*>([^<]*)<\/link>/);
+        const publishedMatch = entry.match(/<published[^>]*>([\s\S]*?)<\/published>/) ||
+                              entry.match(/<updated[^>]*>([\s\S]*?)<\/updated>/);
+        
+        title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').trim() : 'No title';
+        summary = summaryMatch ? summaryMatch[1].replace(/<[^>]*>/g, '').trim().substring(0, 300) + '...' : 'No summary available';
+        link = linkMatch ? linkMatch[1] : '#';
+        publishedStr = publishedMatch ? publishedMatch[1] : new Date().toISOString();
+      } else {
+        // RSS format parsing
+        const titleMatch = entry.match(/<title[^>]*>([\s\S]*?)<\/title>/);
+        const descMatch = entry.match(/<description[^>]*>([\s\S]*?)<\/description>/);
+        const linkMatch = entry.match(/<link[^>]*>([\s\S]*?)<\/link>/);
+        const pubDateMatch = entry.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/);
+        
+        title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').trim() : 'No title';
+        summary = descMatch ? descMatch[1].replace(/<[^>]*>/g, '').trim().substring(0, 300) + '...' : 'No summary available';
+        link = linkMatch ? linkMatch[1].trim() : '#';
+        publishedStr = pubDateMatch ? pubDateMatch[1] : new Date().toISOString();
+      }
       
       const publishedDate = new Date(publishedStr);
       const isValidDate = !isNaN(publishedDate.getTime());

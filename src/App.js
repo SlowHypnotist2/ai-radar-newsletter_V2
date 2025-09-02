@@ -95,13 +95,15 @@ function App() {
                     body: JSON.stringify({ rssUrl: cacheBustUrl, sourceName: source.name })
                 });
                 
-               let result;
+            const rawText = await response.text(); // read body once
+
+let result;
 try {
-  result = await response.json();
+  result = JSON.parse(rawText); // try parsing JSON
 } catch (e) {
-  const text = await response.text(); // fallback if not JSON
-  result = { source: source.name, raw: text, error: "Non-JSON response" };
+  result = { source: source.name, raw: rawText.slice(0, 200), error: "Non-JSON response" };
 }
+
 results.push(result);
 
             } catch (error) {
@@ -577,5 +579,6 @@ results.push(result);
 }
 
 export default App;
+
 
 

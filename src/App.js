@@ -112,8 +112,9 @@ results.push(result);
             }
         }
         
-        setDebugInfo(results);
-        console.log('RSS Test Results:', results);
+       setDebugInfo(results);
+       console.log('RSS Test Results:', JSON.stringify(results, null, 2));
+
     };
 
     // UPDATED: Generate Digest with enhanced debugging
@@ -576,4 +577,5 @@ results.push(result);
 }
 
 export default App;
+
 

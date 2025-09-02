@@ -103,24 +103,28 @@ const fetchRSSFeed = async (url, sourceName) => {
     const responseText = await response.text();
     console.log(`📄 Retrieved content for ${sourceName}: ${responseText.length} characters`);
     
-    // Check if response is JSON error instead of XML
-    let jsonError = null;
-    try {
-      const possibleJson = JSON.parse(responseText);
-      if (possibleJson.error || possibleJson.message) {
-        jsonError = possibleJson;
-        console.warn(`⚠️ ${sourceName} returned JSON error:`, jsonError);
-      }
-    } catch (e) {
-      // Good! It's not JSON, should be XML
+    // ✅ Improved JSON vs XML handling
+let jsonError = null;
+const trimmed = responseText.trim();
+
+if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+  try {
+    const possibleJson = JSON.parse(trimmed);
+    if (possibleJson.error || possibleJson.message) {
+      jsonError = possibleJson;
+      console.warn(`⚠️ ${sourceName} returned JSON error:`, jsonError);
     }
-    
-    // If it's a JSON error, return empty array
-    if (jsonError) {
-      console.warn(`❌ ${sourceName} feed unavailable: ${jsonError.error || jsonError.message}`);
-      return [];
-    }
-    
+  } catch (err) {
+    console.error(`❌ Failed to parse JSON from ${sourceName}:`, err.message);
+  }
+}
+
+// ✅ If feed was JSON error → return visible placeholder instead of []
+if (jsonError) {
+  console.warn(`⚠️ ${sourceName} feed unavailable: ${jsonError.error || jsonError.message}`);
+  return [`⚠️ ${sourceName} feed unavailable (${jsonError.error || jsonError.message})`];
+}
+
     // Check if it's actually XML/RSS content
     if (!responseText.includes('<') || (!responseText.includes('<entry') && !responseText.includes('<item'))) {
       console.warn(`❌ ${sourceName} did not return valid RSS/XML content`);

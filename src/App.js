@@ -95,8 +95,15 @@ function App() {
                     body: JSON.stringify({ rssUrl: cacheBustUrl, sourceName: source.name })
                 });
                 
-                const result = await response.json();
-                results.push(result);
+               let result;
+try {
+  result = await response.json();
+} catch (e) {
+  const text = await response.text(); // fallback if not JSON
+  result = { source: source.name, raw: text, error: "Non-JSON response" };
+}
+results.push(result);
+
             } catch (error) {
                 results.push({
                     source: source.name,
@@ -569,3 +576,4 @@ function App() {
 }
 
 export default App;
+
